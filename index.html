@@ -48,7 +48,7 @@ h2{font-weight:300;font-size:clamp(1.6rem,5vw,2.5rem);margin:0 0 6px}
 .walk{margin:40px 0 0;padding:0;list-style:none}
 .walk li{display:grid;grid-template-columns:44px 1fr;gap:14px;padding:22px 0;border-top:1px solid var(--line)}
 .walk .n{width:44px;height:44px;border:1px solid var(--ink);border-radius:50%;display:grid;place-items:center;font-weight:600}
-.walk img{display:block;max-width:100%;width:340px;margin-top:10px;border:1px solid var(--line)}
+.walk img,.walk video{display:block;max-width:100%;width:340px;margin-top:10px;border:1px solid var(--line)}
 label{display:block;margin:18px 0 6px;font-weight:600;font-size:.92rem}
 input,select,textarea{width:100%;padding:12px;border:1px solid var(--line);background:var(--field);border-radius:4px}
 .btn{display:inline-block;background:var(--ink);color:var(--wall);padding:12px 22px;margin-top:22px;border-radius:4px;font-weight:600}
@@ -74,6 +74,8 @@ var user=null,artists=[];
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function url(p){return sb.storage.from("art").getPublicUrl(p).data.publicUrl}
 function frame(p,alt){return '<span class="frame"><img src="'+esc(url(p))+'" alt="'+esc(alt)+'" loading="lazy"></span>'}
+function isVideo(p){return /\.(mp4|webm|mov|m4v)$/i.test(p)}
+function media(p,n){var u=esc(url(p));return isVideo(p)?'<video src="'+u+'" controls playsinline preload="metadata"></video>':'<img src="'+u+'" alt="Stage '+(n+1)+'" loading="lazy">'}
 function setCrumb(parts){crumb.innerHTML="";parts.forEach(function(p,i){
   if(i)crumb.appendChild(document.createTextNode(" / "));
   if(p.fn){var b=document.createElement("button");b.textContent=p.t;b.onclick=p.fn;crumb.appendChild(b)}else crumb.appendChild(document.createTextNode(p.t));
@@ -122,7 +124,7 @@ function room(i){
 function piece(i,j){
   var a=artists[i],k=a.works[j];
   setCrumb([{t:"Gallery",fn:hall},{t:a.display_name,fn:function(){room(i)}},{t:k.title}]);
-  var s=k.steps.map(function(t,n){return '<li><span class="n">'+(n+1)+'</span><div><b>Stage '+(n+1)+'</b><br>'+esc(t.note||"")+'<img src="'+esc(url(t.image_path))+'" alt="Stage '+(n+1)+'" loading="lazy"></div></li>'}).join("");
+  var s=k.steps.map(function(t,n){return '<li><span class="n">'+(n+1)+'</span><div><b>Stage '+(n+1)+'</b><br>'+esc(t.note||"")+media(t.image_path,n)+'</div></li>'}).join("");
   view.innerHTML='<div class="piece">'+frame(k.image_path,k.title)+'<div class="plaque"><b style="font-size:1.1rem">'+esc(k.title)+'</b><span>'+esc(a.display_name)+', '+esc((k.medium||"").toLowerCase())+'</span></div>'+(k.steps.length?'<span class="seal"><i></i>Process verified</span><ol class="walk">'+s+'</ol>':'')+'</div>';
   window.scrollTo(0,0);
 }
@@ -160,19 +162,21 @@ function startSession(u){
 }
 /* upload */
 function shrink(file){
-  return new Promise(function(res){
+  return new Promise(function(res,rej){
     var img=new Image(),r=new FileReader();
     r.onload=function(){img.onload=function(){
       var max=1600,s=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement("canvas");
       c.width=Math.round(img.width*s);c.height=Math.round(img.height*s);c.getContext("2d").drawImage(img,0,0,c.width,c.height);
-      c.toBlob(function(b){res(b||file)},"image/jpeg",0.85)};img.onerror=function(){res(file)};img.src=r.result};
+      c.toBlob(function(b){res(b||file)},"image/jpeg",0.85)};img.onerror=function(){rej(new Error("That photo cannot be read. Please pick a normal JPG or PNG photo."))};img.src=r.result};
     r.onerror=function(){res(file)};r.readAsDataURL(file);
   });
 }
 function put(file){
-  return shrink(file).then(function(blob){
-    var path=user.id+"/"+crypto.randomUUID()+".jpg";
-    return sb.storage.from("art").upload(path,blob,{contentType:"image/jpeg"}).then(function(r){if(r.error)throw r.error;return path});
+  var v=file.type.indexOf("video/")===0;
+  var job=v?Promise.resolve({blob:file,ext:({"video/mp4":"mp4","video/webm":"webm","video/quicktime":"mov"})[file.type]||"mp4",type:file.type||"video/mp4"}):shrink(file).then(function(b){return{blob:b,ext:"jpg",type:"image/jpeg"}});
+  return job.then(function(o){
+    var path=user.id+"/"+crypto.randomUUID()+"."+o.ext;
+    return sb.storage.from("art").upload(path,o.blob,{contentType:o.type}).then(function(r){if(r.error)throw r.error;return path});
   });
 }
 function uploadForm(){
@@ -184,7 +188,7 @@ function uploadForm(){
   '<h2 style="font-size:1.3rem;margin-top:32px">Process stages</h2><div id="stages"></div><button class="ghost" id="add">Add a stage</button>'+
   '<button class="btn" id="pub">Publish to the gallery</button><div class="msg" id="msg"></div></div>';
   var box=document.getElementById("stages");
-  function addStage(){var d=document.createElement("div");d.className="stage";d.innerHTML='<label>Stage photo</label><input type="file" accept="image/*" class="sf"><label>What did you do here?</label><input class="sn" placeholder="e.g. Light pencil outline">';box.appendChild(d)}
+  function addStage(){var d=document.createElement("div");d.className="stage";d.innerHTML='<label>Stage photo or short video</label><input type="file" accept="image/*,video/*" class="sf"><label>What did you do here?</label><input class="sn" placeholder="e.g. Light pencil outline">';box.appendChild(d)}
   addStage();document.getElementById("add").onclick=addStage;
   document.getElementById("pub").onclick=function(){
     var b=this,m=document.getElementById("msg"),title=document.getElementById("tt").value.trim(),fin=document.getElementById("fin").files[0];
@@ -192,6 +196,8 @@ function uploadForm(){
     m.className="msg";
     if(!title||!fin){m.className="msg err";m.textContent="Please add a title and the finished photo.";return}
     if(!st.length){m.className="msg err";m.textContent="Add at least one process stage. The process is what makes your piece verified.";return}
+    var big=st.concat([{f:fin}]).filter(function(x){return x.f.size>30*1024*1024})[0];
+    if(big){m.className="msg err";m.textContent="One file is over 30 MB. Please use a shorter clip (under about 1 minute) or a smaller photo.";return}
     b.disabled=true;m.textContent="Uploading, please keep this page open...";
     var aid=crypto.randomUUID();
     put(fin).then(function(fp){
