@@ -111,7 +111,7 @@ function hall(){
     if(!artists.length){view.innerHTML=intro+'<p class="empty">The walls are empty for now. The first artists are on their way.</p>';return}
     var w=artists.map(function(a,idx){
       var f=a.works.slice(0,3).map(function(k){return '<button data-a="'+idx+'" aria-label="Enter '+esc(a.display_name)+'\'s room">'+frame(k.image_path,k.title)+'</button>'}).join("");
-      return '<section class="wall"><div class="hang">'+f+'</div><div class="plaque"><b>'+esc(a.display_name)+'</b><span>'+esc(a.city||"")+(a.city?", ":"")+a.works.length+' work'+(a.works.length>1?'s':'')+' with process</span><br><button class="link" data-a="'+idx+'">Enter the room</button></div></section>';
+      return '<section class="wall"><div class="hang">'+f+'</div><div class="plaque"><b>'+esc(a.display_name)+'</b><span>'+esc(a.city||"")+(a.city?", ":"")+a.works.length+' work'+(a.works.length>1?'s':'')+'</span><br><button class="link" data-a="'+idx+'">Enter the room</button></div></section>';
     }).join("");
     view.innerHTML=intro+'<div class="hall" tabindex="0" aria-label="Gallery hall, scroll sideways">'+w+'</div><p class="hint">Swipe sideways to walk to the next artist.</p>';
     view.querySelectorAll("[data-a]").forEach(function(b){b.onclick=function(){room(+b.dataset.a)}});
@@ -217,33 +217,31 @@ function put(file){
 function uploadForm(){
   if(!user){authForm("in");return}
   setCrumb([{t:"Gallery",fn:hall},{t:"Upload art"}]);
-  view.innerHTML='<div class="form"><h2>Share a piece</h2><p class="sub">Begin with the finished artwork. Add the title and medium, then publish it to your gallery wall. The finished piece can stand on its own; process material is welcome, but never required.</p>'+
-  '<label for="tt">Artwork title</label><input id="tt" maxlength="120" placeholder="Give this piece a title">'+
-  '<label for="md">Medium</label><select id="md"><option>Sketch</option><option>Painting</option></select>'+
-  '<label for="fin">Finished artwork — photo required</label><input id="fin" type="file" accept="image/*"><p class="msg">Choose a clear photo where the artwork is easy to see. Uploads must be 30 MB or smaller.</p>'+
-  '<h2 style="font-size:1.3rem;margin-top:32px">Show the process (optional)</h2><p class="msg">The work is more than what you see, but every artist documents differently. You can share a sketch, a progress photo, a short video, or a note about a decision you made. You do not need photos of every step, a perfect studio setup, or a recording of yourself working. If you are describing the process from memory rather than showing a contemporaneous record, say so in your note.</p><div id="stages"></div><button class="ghost" id="add">+ Add another process moment</button>'+
-  '<p class="msg">Each process moment needs a photo or video. Notes are optional and can explain what changed, what you tried, a material you used, a challenge, or why you made a choice. Photos and videos help people understand your process; by themselves, they do not prove authorship.</p>'+
-  '<button class="btn" id="pub">Publish artwork</button><div class="msg" id="msg" role="status" aria-live="polite"></div></div>';
+  view.innerHTML='<div class="form"><h2>Add a piece</h2><p class="sub">Start with the finished work. Process documentation is optional; add it if you have it. You can request formal review later if you have supporting material.</p>'+
+  '<label for="tt">Title</label><input id="tt"><label for="md">Medium</label><select id="md"><option>Sketch</option><option>Painting</option></select>'+
+  '<label for="fin">Finished piece (photo)</label><input id="fin" type="file" accept="image/*">'+
+  '<h2 style="font-size:1.3rem;margin-top:32px">Process stages (optional)</h2><p class="msg">You do not need a phone recording or photos of every step to share your artwork. If you have sketches, progress photos, short videos or notes, add them here.</p><div id="stages"></div><button class="ghost" id="add">Add a process stage</button>'+
+  '<button class="btn" id="pub">Publish to the gallery</button><div class="msg" id="msg"></div></div>';
   var box=document.getElementById("stages");
-  function addStage(){var d=document.createElement("div");d.className="stage";d.innerHTML='<label>Process photo or short video</label><input type="file" accept="image/*,video/mp4,video/webm,video/quicktime" class="sf"><label>What would you like people to know? (optional)</label><input class="sn" maxlength="500" placeholder="e.g. I changed the outline after testing the composition"><p class="msg">Photo or video: 30 MB max. Keep the note short and specific if you can.</p>';box.appendChild(d)}
+  function addStage(){var d=document.createElement("div");d.className="stage";d.innerHTML='<label>Stage photo or short video</label><span class="msg" style="display:block;margin:0 0 6px;font-size:.85rem">Videos: keep under 15 MB (about 15 to 30 seconds at 720p) so they play smoothly on slow data.</span><input type="file" accept="image/*,video/*" class="sf"><label>What did you do here?</label><input class="sn" placeholder="e.g. Light pencil outline">';box.appendChild(d)}
   addStage();document.getElementById("add").onclick=addStage;
   document.getElementById("pub").onclick=function(){
     var b=this,m=document.getElementById("msg"),title=document.getElementById("tt").value.trim(),fin=document.getElementById("fin").files[0];
     var st=[].slice.call(box.querySelectorAll(".stage")).map(function(d){return{f:d.querySelector(".sf").files[0],n:d.querySelector(".sn").value.trim()}}).filter(function(x){return x.f});
     m.className="msg";
-    if(!title||!fin){m.className="msg err";m.textContent="Add an artwork title and choose a photo of the finished piece to continue. Process stages are optional.";return}
+    if(!title||!fin){m.className="msg err";m.textContent="Please add a title and the finished photo.";return}
     
-    var big=st.concat([{f:fin}]).filter(function(x){return x.f.size>30*1024*1024})[0];
-    if(big){m.className="msg err";m.textContent="One of your files is larger than 30 MB. Choose a smaller photo or a shorter/compressed video, then try again.";return}
-    b.disabled=true;m.textContent="Publishing your artwork… Keep this page open until the upload finishes.";
+    var big=st.concat([{f:fin}]).filter(function(x){return x.f.size>15*1024*1024})[0];
+    if(big){m.className="msg err";m.textContent="One file is over 15 MB. Please use a shorter clip (15 to 30 seconds, 720p) or a smaller photo.";return}
+    b.disabled=true;m.textContent="Uploading, please keep this page open...";
     var aid=crypto.randomUUID();
     put(fin).then(function(fp){
       return sb.from("artworks").insert({id:aid,artist_id:user.id,title:title,medium:document.getElementById("md").value,image_path:fp}).then(function(r){if(r.error)throw r.error});
     }).then(function(){
       return st.reduce(function(chain,x,i){return chain.then(function(){m.textContent="Uploading stage "+(i+1)+" of "+st.length+"...";
         return put(x.f).then(function(p){return sb.from("stages").insert({artwork_id:aid,position:i+1,note:x.n,image_path:p}).then(function(r){if(r.error)throw r.error})})})},Promise.resolve());
-    }).then(function(){m.textContent="Your artwork has been published. Thank you for sharing your work.";hall()})
-    .catch(function(e){m.className="msg err";m.textContent="We could not finish publishing this artwork. Check your connection and try again. If you see the piece in your gallery already, refresh before retrying so you do not create a duplicate.";b.disabled=false});
+    }).then(function(){m.textContent="Published!";hall()})
+    .catch(function(e){m.className="msg err";m.textContent="Something went wrong: "+(e.message||e);b.disabled=false});
   };
 }
 sb.auth.getSession().then(function(r){
